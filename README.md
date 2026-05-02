@@ -1,4 +1,4 @@
-# b64-credentials
+# base64-credentials
 
 Un gestionnaire de credentials simple et interactif utilisant l'encodage Base64.
 
