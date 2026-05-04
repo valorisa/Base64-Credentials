@@ -700,11 +700,11 @@ class TestFernetCLI:
         keygen = self.run_cli("keygen")
         key = keygen.stdout.strip()
         enc = self.run_cli(
-            "encrypt", "-u", "admin", "-p", "secret", "--key", key
+            "encrypt", "-u", "admin", "-p", "secret", f"--key={key}"
         )
         assert enc.returncode == 0
         token = enc.stdout.strip()
-        dec = self.run_cli("decrypt", token, "--key", key)
+        dec = self.run_cli("decrypt", token, f"--key={key}")
         assert dec.returncode == 0
         assert "admin" in dec.stdout
         assert "secret" in dec.stdout
@@ -748,10 +748,10 @@ class TestFernetCLI:
         k1 = self.run_cli("keygen").stdout.strip()
         k2 = self.run_cli("keygen").stdout.strip()
         enc = self.run_cli(
-            "encrypt", "-u", "admin", "-p", "secret", "--key", k1
+            "encrypt", "-u", "admin", "-p", "secret", f"--key={k1}"
         )
         token = enc.stdout.strip()
-        dec = self.run_cli("decrypt", token, "--key", k2)
+        dec = self.run_cli("decrypt", token, f"--key={k2}")
         assert dec.returncode == 1
         assert "Erreur" in dec.stderr
 
@@ -763,11 +763,11 @@ class TestFernetCLI:
     def test_decrypt_format_json(self):
         key = self.run_cli("keygen").stdout.strip()
         enc = self.run_cli(
-            "encrypt", "-u", "admin", "-p", "secret", "--key", key
+            "encrypt", "-u", "admin", "-p", "secret", f"--key={key}"
         )
         token = enc.stdout.strip()
         dec = self.run_cli(
-            "decrypt", token, "--key", key, "--format", "json"
+            "decrypt", token, f"--key={key}", "--format", "json"
         )
         assert dec.returncode == 0
         data = json.loads(dec.stdout)
