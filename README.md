@@ -29,11 +29,11 @@ Un gestionnaire de credentials simple et interactif utilisant l'encodage Base64.
 
 ## Description
 
-**b64-credentials** est un utilitaire en ligne de commande écrit en Python
+**base64-credentials** est un utilitaire en ligne de commande écrit en Python
 qui permet d'encoder et de décoder facilement des identifiants (username et
-password) en utilisant l'encodage Base64. Le script offre une interface
-interactive avec un menu simple pour effectuer ces opérations de manière
-réversible.
+password) en utilisant l'encodage Base64. Il offre à la fois un mode interactif
+avec menu et un mode CLI non-interactif pour l'intégration dans des scripts
+et pipelines.
 
 Ce projet est idéal pour :
 
@@ -72,6 +72,10 @@ Ce projet est idéal pour :
   invalides
 - ✅ **Aucune dépendance externe** : Utilise uniquement la bibliothèque
   standard Python
+- ✅ **Mode CLI** : Utilisation non-interactive pour les scripts et pipelines
+- ✅ **Mode batch** : Encodage/décodage en masse depuis un fichier
+- ✅ **Formats de sortie** : text, JSON, env
+- ✅ **Export fichier** : Option `-o` pour écrire le résultat dans un fichier
 - ✅ **Compatible** : Fonctionne avec Python 3.6+
 
 ## Prérequis
@@ -120,6 +124,97 @@ Ou si vous l'avez rendu exécutable :
 
 ```bash
 ./credentials_manager.py
+```
+
+### Mode CLI (non-interactif)
+
+Encoder des credentials directement :
+
+```bash
+python3 credentials_manager.py encode -u admin
+# Le mot de passe est demandé de manière masquée
+
+python3 credentials_manager.py encode -u admin -p secret123
+# Résultat : YWRtaW46c2VjcmV0MTIz
+```
+
+Décoder des credentials :
+
+```bash
+python3 credentials_manager.py decode YWRtaW46c2VjcmV0MTIz
+# Nom d'utilisateur: admin
+# Mot de passe: secret123
+```
+
+Formats de sortie (`--format`) :
+
+```bash
+# JSON
+python3 credentials_manager.py encode -u admin -p secret --format json
+# {"encoded": "YWRtaW46c2VjcmV0"}
+
+python3 credentials_manager.py decode YWRtaW46c2VjcmV0 --format json
+# {"username": "admin", "password": "secret"}
+
+# Variables d'environnement
+python3 credentials_manager.py encode -u admin -p secret --format env
+# CREDENTIALS=YWRtaW46c2VjcmV0
+
+python3 credentials_manager.py decode YWRtaW46c2VjcmV0 --format env
+# USERNAME=admin
+# PASSWORD=secret
+```
+
+Export dans un fichier (`-o`) :
+
+```bash
+python3 credentials_manager.py encode -u admin -p secret -o token.txt
+python3 credentials_manager.py decode YWRtaW46c2VjcmV0 -o creds.env --format env
+```
+
+Mode batch (`-f`) — un élément par ligne, les lignes vides et `#` commentaires sont ignorés :
+
+```bash
+# Fichier d'entrée (creds.txt) :
+# admin:secret123
+# user2:password2
+
+python3 credentials_manager.py encode -f creds.txt
+# YWRtaW46c2VjcmV0MTIz
+# dXNlcjI6cGFzc3dvcmQy
+
+python3 credentials_manager.py encode -f creds.txt --format json
+# [{"username": "admin", "encoded": "YWRtaW46c2VjcmV0MTIz"}, ...]
+
+python3 credentials_manager.py encode -f creds.txt --format json -o tokens.json
+```
+
+```bash
+# Fichier de tokens (tokens.txt) :
+# YWRtaW46c2VjcmV0MTIz
+# dXNlcjI6cGFzc3dvcmQy
+
+python3 credentials_manager.py decode -f tokens.txt
+# admin:secret123
+# user2:password2
+
+python3 credentials_manager.py decode -f tokens.txt --format json
+# [{"username": "admin", "password": "secret123"}, ...]
+```
+
+Utilisation dans un pipeline :
+
+```bash
+TOKEN=$(python3 credentials_manager.py encode -u admin -p secret123)
+curl -H "Authorization: Basic $TOKEN" https://api.example.com/data
+```
+
+### Mode interactif
+
+Sans argument, le script lance le menu interactif :
+
+```bash
+python3 credentials_manager.py
 ```
 
 ### Option 1 : Encoder des credentials
@@ -295,9 +390,7 @@ Les contributions sont les bienvenues ! Voici comment contribuer :
 ### Idées de fonctionnalités futures
 
 - Support de différents formats d'encodage (hex, base32, etc.)
-- Mode batch pour encoder/décoder plusieurs credentials
-- Export vers fichier
-- Support d'autres formats (JSON, YAML)
+- Support YAML en sortie
 - Interface graphique (GUI)
 - Option de chiffrement réel (AES, Fernet)
 

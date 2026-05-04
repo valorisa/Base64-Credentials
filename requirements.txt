@@ -1,0 +1,5 @@
+# Aucune dépendance externe requise.
+# Ce projet utilise uniquement la bibliothèque standard Python.
+
+# Dépendances de développement (optionnelles) :
+# pytest>=7.0
