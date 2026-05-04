@@ -252,7 +252,7 @@ def main():
             except (ValueError, FileNotFoundError) as e:
                 print(f"Erreur: {e}", file=sys.stderr)
                 sys.exit(1)
-        elif stdin_piped:
+        elif stdin_piped and not args.password:
             try:
                 results = batch_encode("-")
                 content = format_batch_encode(results, args.format)
