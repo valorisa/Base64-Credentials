@@ -3,28 +3,27 @@
 [![CI](https://github.com/valorisa/Base64-Credentials/actions/workflows/ci.yml/badge.svg)](https://github.com/valorisa/Base64-Credentials/actions/workflows/ci.yml)
 [![Python 3.6+](https://img.shields.io/badge/python-3.6%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Tests: 109](https://img.shields.io/badge/tests-109%20passed-brightgreen.svg)](test_credentials_manager.py)
+[![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](Dockerfile)
 
-Un gestionnaire de credentials simple et interactif utilisant l'encodage Base64.
+Un outil CLI Python complet pour **encoder**, **décoder** et
+**chiffrer** des credentials (`username:password`), concu pour
+les développeurs, les administrateurs systèmes et les équipes
+DevOps qui manipulent quotidiennement des identifiants dans
+leurs workflows d'automatisation.
 
 ## Table des matières
 
 - [Description](#description)
+- [Pourquoi ce projet ?](#pourquoi-ce-projet-)
+- [Apercu rapide](#apercu-rapide)
 - [Avertissement de sécurité](#avertissement-de-sécurité)
 - [Fonctionnalités](#fonctionnalités)
 - [Prérequis](#prérequis)
 - [Installation](#installation)
 - [Utilisation](#utilisation)
-  - [Lancement du script](#lancement-du-script)
-  - [Option 1 : Encoder des credentials](#option-1--encoder-des-credentials)
-  - [Option 2 : Décoder des credentials](#option-2--décoder-des-credentials)
-  - [Option 3 : Quitter](#option-3--quitter)
 - [Exemples](#exemples)
-  - [Exemple d'encodage avec username et password](#exemple-dencodage-avec-username-et-password)
-  - [Exemple d'encodage avec password uniquement](#exemple-dencodage-avec-password-uniquement)
-  - [Exemple de décodage](#exemple-de-décodage)
 - [Comment ça fonctionne](#comment-ça-fonctionne)
-  - [Processus d'encodage](#processus-dencodage)
-  - [Processus de décodage](#processus-de-décodage)
 - [Cas d'usage](#cas-dusage)
 - [Limitations](#limitations)
 - [Contribution](#contribution)
@@ -33,36 +32,100 @@ Un gestionnaire de credentials simple et interactif utilisant l'encodage Base64.
 
 ## Description
 
-**base64-credentials** est un utilitaire en ligne de commande écrit en Python
-qui permet d'encoder et de décoder facilement des identifiants (username et
-password) en utilisant l'encodage Base64. Il offre à la fois un mode interactif
-avec menu et un mode CLI non-interactif pour l'intégration dans des scripts
-et pipelines.
+**base64-credentials** est un utilitaire en ligne de commande écrit
+en Python qui permet d'encoder, de décoder et de **chiffrer** des
+identifiants (username et password) en utilisant plusieurs formats
+d'encodage (Base64, Base32, Hex, Base85) ainsi que le chiffrement
+symétrique Fernet pour une protection cryptographique réelle.
 
-Ce projet est idéal pour :
+L'outil offre trois modes d'utilisation :
 
-- Encoder rapidement des credentials pour des tests
-- Stocker des identifiants de manière non-lisible à l'œil nu
-- Passer des credentials dans des URLs ou headers HTTP
-- Automatiser l'encodage/décodage de credentials en Basic Authentication
+- **Mode interactif** : un menu guidé pour les opérations
+  ponctuelles, avec saisie masquée du mot de passe
+- **Mode CLI** : des commandes non-interactives (`encode`,
+  `decode`, `encrypt`, `decrypt`, `keygen`) pour l'intégration
+  dans des scripts, pipelines CI/CD et workflows d'automatisation
+- **Mode stdin/pipe** : lecture automatique depuis l'entrée
+  standard, permettant le chainage avec d'autres commandes Unix
+
+Les résultats peuvent etre exportés en **5 formats** (text, JSON,
+YAML, env, fichier) et le **mode batch** permet de traiter des
+centaines de credentials en une seule commande.
+
+Le projet a été concu avec une philosophie **zéro dépendance
+requise** : toutes les fonctionnalités d'encodage/décodage
+reposent sur la bibliothèque standard Python. Les fonctionnalités
+avancées (chiffrement Fernet, autocomplétion shell) sont
+disponibles via des dépendances optionnelles installables à la
+demande.
+
+## Pourquoi ce projet ?
+
+La manipulation de credentials est une tache récurrente pour tout
+développeur ou administrateur système :
+
+- **Tester une API** protégée par HTTP Basic Authentication ?
+  Il faut encoder `admin:password` en Base64 pour le header
+  `Authorization`.
+- **Stocker des identifiants** dans un fichier de configuration ?
+  On souhaite les rendre non-lisibles à l'oeil nu sans pour autant
+  déployer une solution de gestion de secrets.
+- **Migrer des credentials** entre environnements ? Le mode batch
+  encode ou décode des centaines d'identifiants en une commande.
+- **Sécuriser réellement** des identifiants sensibles ? Le
+  chiffrement Fernet offre une protection cryptographique
+  symétrique que le simple encodage Base64 ne fournit pas.
+
+**base64-credentials** rassemble toutes ces opérations dans un
+seul outil léger, sans installation complexe, utilisable aussi
+bien à la main qu'intégré dans un pipeline automatisé.
+
+## Apercu rapide
+
+```bash
+# Encoder des credentials
+credentials-manager encode -u admin -p secret
+# YWRtaW46c2VjcmV0
+
+# Décoder
+credentials-manager decode YWRtaW46c2VjcmV0
+# Nom d'utilisateur: admin
+# Mot de passe: secret
+
+# Chiffrer avec Fernet (protection réelle)
+credentials-manager keygen > key.txt
+credentials-manager encrypt -u admin -p secret \
+  --key-file key.txt
+# gAAAAABp...
+
+# Mode pipe
+echo "admin:secret" | credentials-manager encode
+echo "admin:secret" | credentials-manager encode \
+  | credentials-manager decode
+
+# Mode batch + JSON
+credentials-manager encode -f creds.txt --format json
+```
 
 ## Avertissement de sécurité
 
-> **⚠️ IMPORTANT : Base64 n'est PAS du chiffrement !**
+> **IMPORTANT : Base64 n'est PAS du chiffrement !**
 >
-> L'encodage Base64 est facilement réversible par n'importe qui.
-> Il ne fournit **AUCUNE sécurité cryptographique**. Ne l'utilisez jamais
+> L'encodage Base64 (ainsi que Base32, Hex et Base85) est
+> **facilement réversible** par n'importe qui. Il ne fournit
+> **aucune sécurité cryptographique**. Ne l'utilisez jamais seul
 > pour protéger des informations sensibles en production.
 >
-> Base64 sert uniquement à :
+> Ces encodages servent uniquement à :
 >
-> - Rendre du texte non-lisible à première vue
+> - Rendre du texte non-lisible à premiere vue
 > - Encoder des données binaires en ASCII
-> - Respecter des formats qui nécessitent du texte (comme les headers HTTP)
+> - Respecter des formats qui nécessitent du texte (headers HTTP)
 >
-> Pour un chiffrement réel, utilisez des bibliothèques comme `cryptography`,
-> `PyCryptodome`, ou des solutions de gestion de secrets comme
-> HashiCorp Vault, AWS Secrets Manager, etc.
+> **Pour une protection réelle**, utilisez la commande `encrypt`
+> de cet outil (chiffrement Fernet/AES-128-CBC), ou des solutions
+> dédiées comme HashiCorp Vault, AWS Secrets Manager, Azure Key
+> Vault, etc.
 
 ## Fonctionnalités
 
