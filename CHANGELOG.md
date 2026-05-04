@@ -5,6 +5,19 @@ Toutes les modifications notables de ce projet sont documentées dans ce fichier
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [0.5.0] - 2026-05-04
+
+### Added (0.5.0)
+
+- Chiffrement Fernet : `keygen`, `encrypt`, `decrypt`
+- Résolution de clé via `--key`, `--key-file`, ou `CREDENTIALS_KEY`
+- Autocomplétion shell via argcomplete (optionnel)
+- Dockerfile et `.dockerignore`
+- Man page `credentials-manager.1`
+- Workflow GitHub Actions pour publication PyPI
+- Dépendances optionnelles : `[crypto]`, `[completion]`, `[all]`
+- 16 nouveaux tests Fernet (109 tests au total)
+
 ## [0.4.0] - 2026-05-04
 
 ### Added (0.4.0)

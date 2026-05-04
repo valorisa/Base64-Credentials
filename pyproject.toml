@@ -4,7 +4,7 @@ build-backend = "setuptools.backends._legacy:_Backend"
 
 [project]
 name = "base64-credentials"
-version = "0.4.0"
+version = "0.5.0"
 description = "Gestionnaire de credentials Base64"
 readme = "README.md"
 license = "MIT"
@@ -19,6 +19,11 @@ classifiers = [
     "Topic :: Security",
     "Topic :: Utilities",
 ]
+
+[project.optional-dependencies]
+crypto = ["cryptography>=3.0"]
+completion = ["argcomplete>=2.0"]
+all = ["cryptography>=3.0", "argcomplete>=2.0"]
 
 [project.urls]
 Homepage = "https://github.com/valorisa/Base64-Credentials"

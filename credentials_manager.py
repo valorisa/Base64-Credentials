@@ -1,14 +1,28 @@
 #!/usr/bin/env python3
-"""Gestionnaire de credentials — encode/décode username:password."""
+# PYTHON_ARGCOMPLETE_OK
+"""Gestionnaire de credentials — encode/décode/chiffre username:password."""
 
 import argparse
 import base64
 import binascii
 import getpass
 import json
+import os
 import re
 import sys
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
+
+try:
+    from cryptography.fernet import Fernet, InvalidToken
+    HAS_FERNET = True
+except ImportError:
+    HAS_FERNET = False
+
+try:
+    import argcomplete
+    HAS_ARGCOMPLETE = True
+except ImportError:
+    HAS_ARGCOMPLETE = False
 
 MENU_WIDTH = 50
 MENU_SEPARATOR = "=" * MENU_WIDTH
@@ -80,6 +94,69 @@ def decode_credentials(
 
     username, password = decoded.split(":", 1)
     return username, password
+
+
+def generate_key() -> str:
+    """Génère une clé Fernet."""
+    if not HAS_FERNET:
+        raise RuntimeError(
+            "Le module 'cryptography' est requis pour le chiffrement. "
+            "Installez-le avec : pip install cryptography"
+        )
+    return Fernet.generate_key().decode()
+
+
+def encrypt_credentials(
+    username: str, password: str, key: str
+) -> str:
+    """Chiffre les credentials avec Fernet."""
+    if not HAS_FERNET:
+        raise RuntimeError(
+            "Le module 'cryptography' est requis pour le chiffrement. "
+            "Installez-le avec : pip install cryptography"
+        )
+    credentials = f"{username}:{password}"
+    f = Fernet(key.encode())
+    return f.encrypt(credentials.encode()).decode()
+
+
+def decrypt_credentials(token: str, key: str) -> Tuple[str, str]:
+    """Déchiffre les credentials avec Fernet."""
+    if not HAS_FERNET:
+        raise RuntimeError(
+            "Le module 'cryptography' est requis pour le chiffrement. "
+            "Installez-le avec : pip install cryptography"
+        )
+    f = Fernet(key.encode())
+    try:
+        decrypted = f.decrypt(token.encode()).decode()
+    except InvalidToken as e:
+        raise ValueError(
+            "Déchiffrement impossible : clé invalide ou données corrompues."
+        ) from e
+
+    if ":" not in decrypted:
+        raise ValueError("Format invalide : séparateur ':' manquant.")
+
+    username, password = decrypted.split(":", 1)
+    return username, password
+
+
+def _resolve_key(args) -> str:
+    """Résout la clé Fernet depuis les arguments, env, ou fichier."""
+    key = getattr(args, "key", None)
+    if key:
+        return key
+    key = os.environ.get("CREDENTIALS_KEY")
+    if key:
+        return key
+    key_file = getattr(args, "key_file", None)
+    if key_file:
+        with open(key_file, "r", encoding="utf-8") as kf:
+            return kf.read().strip()
+    raise ValueError(
+        "Clé requise : --key, --key-file, ou variable CREDENTIALS_KEY"
+    )
 
 
 def _yaml_scalar(value: str) -> str:
@@ -329,12 +406,66 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_common_args(decode_parser)
 
+    keygen_parser = subparsers.add_parser(
+        "keygen", help="Générer une clé de chiffrement Fernet"
+    )
+    keygen_parser.add_argument(
+        "-o", "--output", metavar="FILE",
+        help="Écrire la clé dans un fichier",
+    )
+
+    encrypt_parser = subparsers.add_parser(
+        "encrypt", help="Chiffrer des credentials avec Fernet"
+    )
+    encrypt_parser.add_argument(
+        "-u", "--username", default="", help="Nom d'utilisateur",
+    )
+    encrypt_parser.add_argument(
+        "-p", "--password",
+        help="Mot de passe",
+    )
+    encrypt_parser.add_argument(
+        "--key", help="Clé Fernet (ou via CREDENTIALS_KEY)",
+    )
+    encrypt_parser.add_argument(
+        "--key-file", metavar="FILE",
+        help="Fichier contenant la clé Fernet",
+    )
+    encrypt_parser.add_argument(
+        "-o", "--output", metavar="FILE",
+        help="Écrire le résultat dans un fichier",
+    )
+
+    decrypt_parser = subparsers.add_parser(
+        "decrypt", help="Déchiffrer des credentials avec Fernet"
+    )
+    decrypt_parser.add_argument("token", help="Token chiffré Fernet")
+    decrypt_parser.add_argument(
+        "--key", help="Clé Fernet (ou via CREDENTIALS_KEY)",
+    )
+    decrypt_parser.add_argument(
+        "--key-file", metavar="FILE",
+        help="Fichier contenant la clé Fernet",
+    )
+    decrypt_parser.add_argument(
+        "-o", "--output", metavar="FILE",
+        help="Écrire le résultat dans un fichier",
+    )
+    decrypt_parser.add_argument(
+        "--format",
+        choices=["text", "json", "env", "yaml"],
+        default="text",
+        help="Format de sortie (défaut: text)",
+    )
+
     return parser
 
 
 def main():
     """Point d'entrée principal."""
     parser = build_parser()
+    if HAS_ARGCOMPLETE:
+        argcomplete.autocomplete(parser)
     args = parser.parse_args()
 
     stdin_piped = not sys.stdin.isatty()
@@ -395,6 +526,31 @@ def main():
                 sys.exit(1)
         else:
             parser.error("decode nécessite un token, --file, ou stdin")
+    elif args.command == "keygen":
+        try:
+            key = generate_key()
+            write_output(key, args.output)
+        except RuntimeError as e:
+            print(f"Erreur: {e}", file=sys.stderr)
+            sys.exit(1)
+    elif args.command == "encrypt":
+        try:
+            key = _resolve_key(args)
+            password = args.password or getpass.getpass("Mot de passe: ")
+            token = encrypt_credentials(args.username, password, key)
+            write_output(token, args.output)
+        except (ValueError, RuntimeError, FileNotFoundError) as e:
+            print(f"Erreur: {e}", file=sys.stderr)
+            sys.exit(1)
+    elif args.command == "decrypt":
+        try:
+            key = _resolve_key(args)
+            username, password = decrypt_credentials(args.token, key)
+            content = format_decoded(username, password, args.format)
+            write_output(content, args.output)
+        except (ValueError, RuntimeError, FileNotFoundError) as e:
+            print(f"Erreur: {e}", file=sys.stderr)
+            sys.exit(1)
     else:
         interactive_loop()
 

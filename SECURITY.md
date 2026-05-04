@@ -23,5 +23,5 @@ Si vous découvrez un problème de sécurité dans ce projet :
 
 | Version | Supportée |
 |---------|-----------|
-| 0.4.x   | Oui       |
-| < 0.4   | Non       |
+| 0.5.x   | Oui       |
+| < 0.5   | Non       |

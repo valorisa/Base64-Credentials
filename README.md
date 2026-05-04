@@ -74,8 +74,12 @@ Ce projet est idéal pour :
 - ✅ **Username optionnel** : Possibilité d'encoder uniquement un mot de passe
 - ✅ **Gestion des erreurs** : Messages clairs en cas de données
   invalides
-- ✅ **Aucune dépendance externe** : Utilise uniquement la bibliothèque
-  standard Python
+- ✅ **Chiffrement Fernet** : `encrypt`/`decrypt` avec clé symétrique
+- ✅ **Autocomplétion shell** : bash/zsh/fish via argcomplete
+- ✅ **Docker** : Image minimale disponible
+- ✅ **Man page** : `credentials-manager.1` incluse
+- ✅ **Aucune dépendance requise** : stdlib uniquement (crypto et
+  completion optionnels)
 - ✅ **Mode CLI** : Utilisation non-interactive pour les scripts et pipelines
 - ✅ **Support stdin** : Lecture depuis pipe (`echo "user:pass" | ... encode`)
 - ✅ **Mode batch** : Encodage/décodage en masse depuis un fichier
@@ -87,6 +91,8 @@ Ce projet est idéal pour :
 ## Prérequis
 
 - Python 3.6 ou supérieur
+- `cryptography` (optionnel, pour encrypt/decrypt)
+- `argcomplete` (optionnel, pour l'autocomplétion shell)
 
 Vérifiez votre version de Python :
 
@@ -96,17 +102,31 @@ python3 --version
 
 ## Installation
 
-### Méthode 1 : Clonage du repository
+### Méthode 1 : pip (recommandé)
 
 ```bash
-git clone https://github.com/valorisa/b64-credentials.git
-cd b64-credentials
+pip install base64-credentials
+pip install base64-credentials[all]  # avec crypto + completion
 ```
 
-### Méthode 2 : Téléchargement direct
+### Méthode 2 : Clonage du repository
 
-Téléchargez le fichier `credentials_manager.py` directement depuis GitHub
-et placez-le dans un dossier de votre choix.
+```bash
+git clone https://github.com/valorisa/Base64-Credentials.git
+cd Base64-Credentials
+```
+
+### Méthode 3 : Docker
+
+```bash
+docker build -t credentials-manager .
+docker run --rm credentials-manager encode -u admin -p secret
+```
+
+### Méthode 4 : Téléchargement direct
+
+Téléchargez le fichier `credentials_manager.py` directement
+depuis GitHub.
 
 ### Rendre le script exécutable (optionnel)
 
@@ -159,6 +179,42 @@ python3 credentials_manager.py decode MFSG22LOHJZWKY3SMV2A==== \
   --encoding base32
 # Nom d'utilisateur: admin
 # Mot de passe: secret
+```
+
+Chiffrement Fernet (nécessite `pip install cryptography`) :
+
+```bash
+# Générer une clé
+python3 credentials_manager.py keygen > key.txt
+
+# Chiffrer
+python3 credentials_manager.py encrypt -u admin -p secret \
+  --key-file key.txt
+# gAAAAABp...
+
+# Déchiffrer
+python3 credentials_manager.py decrypt TOKEN --key-file key.txt
+# Nom d'utilisateur: admin
+# Mot de passe: secret
+
+# Via variable d'environnement
+export CREDENTIALS_KEY=$(cat key.txt)
+python3 credentials_manager.py encrypt -u admin -p secret
+python3 credentials_manager.py decrypt TOKEN --format json
+```
+
+Autocomplétion shell (nécessite `pip install argcomplete`) :
+
+```bash
+# bash
+eval "$(register-python-argcomplete credentials-manager)"
+
+# zsh
+eval "$(register-python-argcomplete credentials-manager)"
+
+# fish
+register-python-argcomplete --shell fish \
+  credentials-manager | source
 ```
 
 Validation de la force du mot de passe :
@@ -444,9 +500,8 @@ Les contributions sont les bienvenues ! Voici comment contribuer :
 ### Idées de fonctionnalités futures
 
 - Interface graphique (GUI)
-- Option de chiffrement réel (AES, Fernet)
-- Publication PyPI
-- Autocomplétion shell (bash/zsh/fish)
+- Batch encrypt/decrypt
+- Rotation de clé Fernet
 
 ## Licence
 

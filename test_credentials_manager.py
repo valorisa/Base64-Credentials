@@ -2,6 +2,7 @@
 
 import base64
 import json
+import os
 import subprocess
 import sys
 
@@ -12,11 +13,14 @@ from credentials_manager import (
     batch_encode,
     check_password_strength,
     decode_credentials,
+    decrypt_credentials,
     encode_credentials,
+    encrypt_credentials,
     format_batch_decode,
     format_batch_encode,
     format_decoded,
     format_encoded,
+    generate_key,
 )
 
 
@@ -614,3 +618,158 @@ class TestYAMLFormatCLI:
         assert result.returncode == 0
         assert "username: admin" in result.stdout
         assert "password: secret" in result.stdout
+
+
+# --- Fernet encryption ---
+
+
+class TestFernet:
+    def test_generate_key(self):
+        key = generate_key()
+        assert len(key) == 44
+        assert key.endswith("=")
+
+    def test_generate_key_unique(self):
+        k1 = generate_key()
+        k2 = generate_key()
+        assert k1 != k2
+
+    def test_encrypt_decrypt_roundtrip(self):
+        key = generate_key()
+        token = encrypt_credentials("admin", "secret", key)
+        username, password = decrypt_credentials(token, key)
+        assert username == "admin"
+        assert password == "secret"
+
+    def test_encrypt_decrypt_special_chars(self):
+        key = generate_key()
+        token = encrypt_credentials("user@mail.com", "p@ss:w0rd!", key)
+        u, p = decrypt_credentials(token, key)
+        assert u == "user@mail.com"
+        assert p == "p@ss:w0rd!"
+
+    def test_encrypt_decrypt_unicode(self):
+        key = generate_key()
+        token = encrypt_credentials("utilisateur", "môtdëpàsse", key)
+        u, p = decrypt_credentials(token, key)
+        assert u == "utilisateur"
+        assert p == "môtdëpàsse"
+
+    def test_decrypt_wrong_key(self):
+        key1 = generate_key()
+        key2 = generate_key()
+        token = encrypt_credentials("admin", "secret", key1)
+        with pytest.raises(ValueError, match="invalide"):
+            decrypt_credentials(token, key2)
+
+    def test_decrypt_invalid_token(self):
+        key = generate_key()
+        with pytest.raises(ValueError, match="invalide"):
+            decrypt_credentials("not-a-valid-token", key)
+
+    def test_encrypt_empty_username(self):
+        key = generate_key()
+        token = encrypt_credentials("", "secret", key)
+        u, p = decrypt_credentials(token, key)
+        assert u == ""
+        assert p == "secret"
+
+
+class TestFernetCLI:
+    def run_cli(self, *args):
+        return subprocess.run(
+            [sys.executable, "credentials_manager.py", *args],
+            capture_output=True,
+            text=True,
+        )
+
+    def test_keygen_cli(self):
+        result = self.run_cli("keygen")
+        assert result.returncode == 0
+        key = result.stdout.strip()
+        assert len(key) == 44
+
+    def test_keygen_output_file(self, tmp_path):
+        out = tmp_path / "key.txt"
+        result = self.run_cli("keygen", "-o", str(out))
+        assert result.returncode == 0
+        key = out.read_text(encoding="utf-8").strip()
+        assert len(key) == 44
+
+    def test_encrypt_decrypt_cli(self):
+        keygen = self.run_cli("keygen")
+        key = keygen.stdout.strip()
+        enc = self.run_cli(
+            "encrypt", "-u", "admin", "-p", "secret", "--key", key
+        )
+        assert enc.returncode == 0
+        token = enc.stdout.strip()
+        dec = self.run_cli("decrypt", token, "--key", key)
+        assert dec.returncode == 0
+        assert "admin" in dec.stdout
+        assert "secret" in dec.stdout
+
+    def test_encrypt_decrypt_key_file(self, tmp_path):
+        keygen = self.run_cli("keygen")
+        key_file = tmp_path / "key.txt"
+        key_file.write_text(keygen.stdout.strip(), encoding="utf-8")
+        enc = self.run_cli(
+            "encrypt", "-u", "admin", "-p", "secret",
+            "--key-file", str(key_file),
+        )
+        assert enc.returncode == 0
+        token = enc.stdout.strip()
+        dec = self.run_cli(
+            "decrypt", token, "--key-file", str(key_file),
+        )
+        assert dec.returncode == 0
+        assert "admin" in dec.stdout
+
+    def test_encrypt_decrypt_env_key(self):
+        keygen = self.run_cli("keygen")
+        key = keygen.stdout.strip()
+        env = {**os.environ, "CREDENTIALS_KEY": key}
+        enc = subprocess.run(
+            [sys.executable, "credentials_manager.py",
+             "encrypt", "-u", "admin", "-p", "secret"],
+            capture_output=True, text=True, env=env,
+        )
+        assert enc.returncode == 0
+        token = enc.stdout.strip()
+        dec = subprocess.run(
+            [sys.executable, "credentials_manager.py",
+             "decrypt", token],
+            capture_output=True, text=True, env=env,
+        )
+        assert dec.returncode == 0
+        assert "admin" in dec.stdout
+
+    def test_decrypt_wrong_key_cli(self):
+        k1 = self.run_cli("keygen").stdout.strip()
+        k2 = self.run_cli("keygen").stdout.strip()
+        enc = self.run_cli(
+            "encrypt", "-u", "admin", "-p", "secret", "--key", k1
+        )
+        token = enc.stdout.strip()
+        dec = self.run_cli("decrypt", token, "--key", k2)
+        assert dec.returncode == 1
+        assert "Erreur" in dec.stderr
+
+    def test_decrypt_no_key_cli(self):
+        result = self.run_cli("decrypt", "sometoken")
+        assert result.returncode == 1
+        assert "Erreur" in result.stderr
+
+    def test_decrypt_format_json(self):
+        key = self.run_cli("keygen").stdout.strip()
+        enc = self.run_cli(
+            "encrypt", "-u", "admin", "-p", "secret", "--key", key
+        )
+        token = enc.stdout.strip()
+        dec = self.run_cli(
+            "decrypt", token, "--key", key, "--format", "json"
+        )
+        assert dec.returncode == 0
+        data = json.loads(dec.stdout)
+        assert data["username"] == "admin"
+        assert data["password"] == "secret"

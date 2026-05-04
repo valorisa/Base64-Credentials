@@ -5,7 +5,7 @@ with open("README.md", encoding="utf-8") as f:
 
 setup(
     name="base64-credentials",
-    version="0.4.0",
+    version="0.5.0",
     description="Gestionnaire de credentials Base64 — encode/décode username:password",
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -36,4 +36,9 @@ setup(
         "Topic :: Utilities",
     ],
     license="MIT",
+    extras_require={
+        "crypto": ["cryptography>=3.0"],
+        "completion": ["argcomplete>=2.0"],
+        "all": ["cryptography>=3.0", "argcomplete>=2.0"],
+    },
 )

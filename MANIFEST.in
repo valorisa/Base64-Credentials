@@ -3,3 +3,4 @@ include README.md
 include CHANGELOG.md
 include requirements.txt
 include pyproject.toml
+include credentials-manager.1

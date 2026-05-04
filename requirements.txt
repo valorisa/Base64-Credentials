@@ -1,5 +1,7 @@
-# Aucune dépendance externe requise.
-# Ce projet utilise uniquement la bibliothèque standard Python.
+# Dépendances optionnelles :
+# cryptography>=3.0    # pour encrypt/decrypt (Fernet)
+# argcomplete>=2.0     # pour l'autocomplétion shell
 
-# Dépendances de développement (optionnelles) :
+# Dépendances de développement :
 # pytest>=7.0
+
