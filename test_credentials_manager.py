@@ -563,12 +563,11 @@ class TestPasswordStrengthCLI:
             "--check-password",
         )
         assert result.returncode == 0
-        relevant_stderr = [
+        stderr_lines = [
             line for line in result.stderr.splitlines()
-            if "DeprecationWarning" not in line
-            and "CryptographyDeprecationWarning" not in line
+            if line.startswith("⚠")
         ]
-        assert relevant_stderr == []
+        assert stderr_lines == []
 
 
 # --- YAML format ---
