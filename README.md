@@ -66,8 +66,8 @@ Ce projet est idéal pour :
 
 ## Fonctionnalités
 
-- ✅ **Encodage Base64** : Transforme username:password en chaîne Base64
-- ✅ **Décodage Base64** : Récupère les credentials depuis une chaîne encodée
+- ✅ **Encodages multiples** : base64, base32, hex, base85
+- ✅ **Décodage** : Récupère les credentials depuis une chaîne encodée
 - ✅ **Interface interactive** : Menu simple et intuitif
 - ✅ **Saisie masquée** : Les mots de passe ne s'affichent pas à l'écran
   lors de la saisie
@@ -79,7 +79,8 @@ Ce projet est idéal pour :
 - ✅ **Mode CLI** : Utilisation non-interactive pour les scripts et pipelines
 - ✅ **Support stdin** : Lecture depuis pipe (`echo "user:pass" | ... encode`)
 - ✅ **Mode batch** : Encodage/décodage en masse depuis un fichier
-- ✅ **Formats de sortie** : text, JSON, env
+- ✅ **Formats de sortie** : text, JSON, env, YAML
+- ✅ **Validation mot de passe** : `--check-password` optionnel
 - ✅ **Export fichier** : Option `-o` pour écrire le résultat dans un fichier
 - ✅ **Compatible** : Fonctionne avec Python 3.6+
 
@@ -143,6 +144,35 @@ python3 credentials_manager.py encode -u admin -p secret123
 # Résultat : YWRtaW46c2VjcmV0MTIz
 ```
 
+Encodages alternatifs (`--encoding`) :
+
+```bash
+python3 credentials_manager.py encode -u admin -p secret \
+  --encoding base32
+# MFSG22LOHJZWKY3SMV2A====
+
+python3 credentials_manager.py encode -u admin -p secret \
+  --encoding hex
+# 61646d696e3a736563726574
+
+python3 credentials_manager.py decode MFSG22LOHJZWKY3SMV2A==== \
+  --encoding base32
+# Nom d'utilisateur: admin
+# Mot de passe: secret
+```
+
+Validation de la force du mot de passe :
+
+```bash
+python3 credentials_manager.py encode -u admin -p ab \
+  --check-password
+# ⚠ Longueur insuffisante (2/8)
+# ⚠ Manque une majuscule
+# ⚠ Manque un chiffre
+# ⚠ Manque un caractère spécial
+# YWRtaW46YWI=
+```
+
 Décoder des credentials :
 
 ```bash
@@ -177,7 +207,8 @@ python3 credentials_manager.py encode -u admin -p secret -o token.txt
 python3 credentials_manager.py decode YWRtaW46c2VjcmV0 -o creds.env --format env
 ```
 
-Mode batch (`-f`) — un élément par ligne, les lignes vides et `#` commentaires sont ignorés :
+Mode batch (`-f`) — un élément par ligne,
+les lignes vides et `#` commentaires sont ignorés :
 
 ```bash
 # Fichier d'entrée (creds.txt) :
@@ -217,7 +248,8 @@ echo "YWRtaW46c2VjcmV0" | python3 credentials_manager.py decode
 # admin:secret
 
 # Chaînage complet :
-echo "admin:secret" | python3 credentials_manager.py encode | python3 credentials_manager.py decode
+echo "admin:secret" | python3 credentials_manager.py encode \
+  | python3 credentials_manager.py decode
 # admin:secret
 
 # Batch via stdin :
@@ -411,10 +443,10 @@ Les contributions sont les bienvenues ! Voici comment contribuer :
 
 ### Idées de fonctionnalités futures
 
-- Support de différents formats d'encodage (hex, base32, etc.)
-- Support YAML en sortie
 - Interface graphique (GUI)
 - Option de chiffrement réel (AES, Fernet)
+- Publication PyPI
+- Autocomplétion shell (bash/zsh/fish)
 
 ## Licence
 

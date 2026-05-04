@@ -8,10 +8,13 @@ Merci de votre intérêt pour ce projet ! Les contributions sont les bienvenues.
 2. **Créez** une branche pour votre fonctionnalité (`git checkout -b feature/ma-feature`)
 3. **Codez** votre modification
 4. **Testez** — assurez-vous que tous les tests passent :
+
    ```bash
    python -m pytest test_credentials_manager.py -v
    ```
-5. **Committez** avec un message clair (`git commit -m 'Add: description courte'`)
+
+5. **Committez** avec un message clair
+   (`git commit -m 'Add: description courte'`)
 6. **Push** vers votre fork (`git push origin feature/ma-feature`)
 7. **Ouvrez** une Pull Request
 
@@ -32,7 +35,9 @@ Ouvrez une [issue](https://github.com/valorisa/Base64-Credentials/issues) avec :
 
 ## Proposer une fonctionnalité
 
-Ouvrez une [issue](https://github.com/valorisa/Base64-Credentials/issues) décrivant :
+Ouvrez une
+[issue](https://github.com/valorisa/Base64-Credentials/issues)
+décrivant :
 
 - Le cas d'usage
 - Le comportement souhaité

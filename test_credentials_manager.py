@@ -10,6 +10,7 @@ import pytest
 from credentials_manager import (
     batch_decode,
     batch_encode,
+    check_password_strength,
     decode_credentials,
     encode_credentials,
     format_batch_decode,
@@ -433,3 +434,183 @@ class TestStdin:
         result = self.run_cli_stdin("not-valid!!!\n", "decode")
         assert result.returncode == 1
         assert "Erreur" in result.stderr
+
+
+# --- alternative encodings ---
+
+
+class TestAlternativeEncodings:
+    @pytest.mark.parametrize("encoding", ["base64", "base32", "hex", "base85"])
+    def test_roundtrip(self, encoding):
+        encoded = encode_credentials("admin", "secret", encoding)
+        username, password = decode_credentials(encoded, encoding)
+        assert username == "admin"
+        assert password == "secret"
+
+    def test_base32_output(self):
+        result = encode_credentials("admin", "secret", "base32")
+        assert result == base64.b32encode(b"admin:secret").decode()
+
+    def test_hex_output(self):
+        result = encode_credentials("admin", "secret", "hex")
+        assert result == b"admin:secret".hex()
+
+    def test_base85_output(self):
+        result = encode_credentials("admin", "secret", "base85")
+        assert result == base64.b85encode(b"admin:secret").decode()
+
+    def test_decode_wrong_encoding_raises(self):
+        encoded = encode_credentials("admin", "secret", "base64")
+        with pytest.raises(ValueError):
+            decode_credentials(encoded, "base32")
+
+    @pytest.mark.parametrize("encoding", ["base32", "hex", "base85"])
+    def test_unicode_roundtrip(self, encoding):
+        encoded = encode_credentials("user", "môtdëpàsse", encoding)
+        u, p = decode_credentials(encoded, encoding)
+        assert u == "user"
+        assert p == "môtdëpàsse"
+
+    @pytest.mark.parametrize("encoding", ["base32", "hex", "base85"])
+    def test_batch_encode_with_encoding(self, tmp_path, encoding):
+        f = tmp_path / "creds.txt"
+        f.write_text("admin:secret\n", encoding="utf-8")
+        results = batch_encode(str(f), encoding)
+        assert len(results) == 1
+        u, p = decode_credentials(results[0]["encoded"], encoding)
+        assert u == "admin"
+        assert p == "secret"
+
+
+class TestAlternativeEncodingsCLI:
+    def run_cli(self, *args):
+        return subprocess.run(
+            [sys.executable, "credentials_manager.py", *args],
+            capture_output=True,
+            text=True,
+        )
+
+    @pytest.mark.parametrize("encoding", ["base32", "hex", "base85"])
+    def test_encode_decode_cli(self, encoding):
+        enc = self.run_cli(
+            "encode", "-u", "admin", "-p", "secret", "--encoding", encoding
+        )
+        assert enc.returncode == 0
+        token = enc.stdout.strip()
+        dec = self.run_cli("decode", token, "--encoding", encoding)
+        assert dec.returncode == 0
+        assert "admin" in dec.stdout
+        assert "secret" in dec.stdout
+
+
+# --- password strength ---
+
+
+class TestPasswordStrength:
+    def test_weak_password(self):
+        warnings = check_password_strength("ab")
+        assert len(warnings) >= 2
+        assert any("Longueur" in w for w in warnings)
+
+    def test_no_uppercase(self):
+        warnings = check_password_strength("abcdefgh1!")
+        assert any("majuscule" in w for w in warnings)
+
+    def test_no_lowercase(self):
+        warnings = check_password_strength("ABCDEFGH1!")
+        assert any("minuscule" in w for w in warnings)
+
+    def test_no_digit(self):
+        warnings = check_password_strength("Abcdefgh!")
+        assert any("chiffre" in w for w in warnings)
+
+    def test_no_special(self):
+        warnings = check_password_strength("Abcdefgh1")
+        assert any("sp" in w for w in warnings)
+
+    def test_strong_password(self):
+        warnings = check_password_strength("Str0ng!Pass")
+        assert warnings == []
+
+    def test_empty_password(self):
+        warnings = check_password_strength("")
+        assert len(warnings) >= 1
+
+
+class TestPasswordStrengthCLI:
+    def run_cli(self, *args):
+        return subprocess.run(
+            [sys.executable, "credentials_manager.py", *args],
+            capture_output=True,
+            text=True,
+        )
+
+    def test_check_password_weak(self):
+        result = self.run_cli(
+            "encode", "-u", "admin", "-p", "ab", "--check-password"
+        )
+        assert result.returncode == 0
+        assert result.stdout.strip() != ""
+        assert "Longueur" in result.stderr
+
+    def test_check_password_strong(self):
+        result = self.run_cli(
+            "encode", "-u", "admin", "-p", "Str0ng!Pass",
+            "--check-password",
+        )
+        assert result.returncode == 0
+        assert result.stderr == ""
+
+
+# --- YAML format ---
+
+
+class TestYAMLFormat:
+    def test_format_encoded_yaml(self):
+        result = format_encoded("abc123", "yaml")
+        assert "encoded: abc123" in result
+
+    def test_format_decoded_yaml(self):
+        result = format_decoded("admin", "secret", "yaml")
+        assert "username: admin" in result
+        assert "password: secret" in result
+
+    def test_format_decoded_yaml_special_chars(self):
+        result = format_decoded("admin", "p@ss:word!", "yaml")
+        assert "password:" in result
+        assert "p@ss:word!" in result
+
+    def test_format_batch_encode_yaml(self):
+        results = [{"username": "admin", "encoded": "abc"}]
+        output = format_batch_encode(results, "yaml")
+        assert "- username: admin" in output
+        assert "  encoded: abc" in output
+
+    def test_format_batch_decode_yaml(self):
+        results = [{"username": "admin", "password": "secret"}]
+        output = format_batch_decode(results, "yaml")
+        assert "- username: admin" in output
+        assert "  password: secret" in output
+
+
+class TestYAMLFormatCLI:
+    def run_cli(self, *args):
+        return subprocess.run(
+            [sys.executable, "credentials_manager.py", *args],
+            capture_output=True,
+            text=True,
+        )
+
+    def test_encode_yaml(self):
+        result = self.run_cli(
+            "encode", "-u", "admin", "-p", "secret", "--format", "yaml"
+        )
+        assert result.returncode == 0
+        assert "encoded:" in result.stdout
+
+    def test_decode_yaml(self):
+        token = base64.b64encode(b"admin:secret").decode()
+        result = self.run_cli("decode", token, "--format", "yaml")
+        assert result.returncode == 0
+        assert "username: admin" in result.stdout
+        assert "password: secret" in result.stdout
