@@ -208,10 +208,8 @@ def _open_input(input_path: str):
     return open(input_path, "r", encoding="utf-8")
 
 
-def batch_encode(
-    input_path: str, encoding: str = DEFAULT_ENCODING
-) -> List[Dict[str, str]]:
-    """Encode des credentials depuis un fichier ou stdin."""
+def _batch_process(input_path: str, line_processor) -> List[Dict[str, str]]:
+    """Traite un fichier ligne par ligne, en ignorant commentaires et blancs."""
     results = []
     source = _open_input(input_path)
     try:
@@ -219,83 +217,86 @@ def batch_encode(
             line = line.strip()
             if not line or line.startswith("#"):
                 continue
-            if ":" not in line:
-                raise ValueError(
-                    f"Ligne {lineno}: séparateur ':' manquant dans '{line}'"
-                )
-            username, password = line.split(":", 1)
-            encoded = encode_credentials(username, password, encoding)
-            results.append({"username": username, "encoded": encoded})
+            results.append(line_processor(lineno, line))
     finally:
         if source is not sys.stdin:
             source.close()
     return results
+
+
+def batch_encode(
+    input_path: str, encoding: str = DEFAULT_ENCODING
+) -> List[Dict[str, str]]:
+    """Encode des credentials depuis un fichier ou stdin."""
+    def process_line(lineno, line):
+        if ":" not in line:
+            raise ValueError(
+                f"Ligne {lineno}: séparateur ':' manquant dans '{line}'"
+            )
+        username, password = line.split(":", 1)
+        encoded = encode_credentials(username, password, encoding)
+        return {"username": username, "encoded": encoded}
+    return _batch_process(input_path, process_line)
 
 
 def batch_decode(
     input_path: str, encoding: str = DEFAULT_ENCODING
 ) -> List[Dict[str, str]]:
     """Décode des credentials depuis un fichier ou stdin."""
-    results = []
-    source = _open_input(input_path)
-    try:
-        for lineno, line in enumerate(source, 1):
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            try:
-                username, password = decode_credentials(line, encoding)
-            except ValueError as e:
-                raise ValueError(f"Ligne {lineno}: {e}") from e
-            results.append({"username": username, "password": password})
-    finally:
-        if source is not sys.stdin:
-            source.close()
-    return results
+    def process_line(lineno, line):
+        try:
+            username, password = decode_credentials(line, encoding)
+        except ValueError as e:
+            raise ValueError(f"Ligne {lineno}: {e}") from e
+        return {"username": username, "password": password}
+    return _batch_process(input_path, process_line)
+
+
+def _format_batch(results, fmt, yaml_item, env_item, text_item) -> str:
+    """Formate une liste de résultats batch selon le format demandé."""
+    if fmt == "json":
+        return json.dumps(results, ensure_ascii=False, indent=2)
+    lines = []
+    for r in results:
+        if fmt == "yaml":
+            lines.append(yaml_item(r))
+        elif fmt == "env":
+            lines.extend(env_item(r))
+        else:
+            lines.append(text_item(r))
+    return "\n".join(lines)
 
 
 def format_batch_encode(results: List[Dict[str, str]], fmt: str = "text") -> str:
     """Formate les résultats d'un batch encode."""
-    if fmt == "json":
-        return json.dumps(results, ensure_ascii=False, indent=2)
-    if fmt == "yaml":
-        lines = []
-        for r in results:
-            lines.append(
-                f"- username: {_yaml_scalar(r['username'])}\n"
-                f"  encoded: {_yaml_scalar(r['encoded'])}"
-            )
-        return "\n".join(lines)
-    lines = []
-    for r in results:
-        if fmt == "env":
-            lines.append(f"# {r['username'] or '(vide)'}")
-            lines.append(f"CREDENTIALS={r['encoded']}")
-        else:
-            lines.append(r["encoded"])
-    return "\n".join(lines)
+    return _format_batch(
+        results, fmt,
+        yaml_item=lambda r: (
+            f"- username: {_yaml_scalar(r['username'])}\n"
+            f"  encoded: {_yaml_scalar(r['encoded'])}"
+        ),
+        env_item=lambda r: [
+            f"# {r['username'] or '(vide)'}",
+            f"CREDENTIALS={r['encoded']}",
+        ],
+        text_item=lambda r: r["encoded"],
+    )
 
 
 def format_batch_decode(results: List[Dict[str, str]], fmt: str = "text") -> str:
     """Formate les résultats d'un batch decode."""
-    if fmt == "json":
-        return json.dumps(results, ensure_ascii=False, indent=2)
-    if fmt == "yaml":
-        lines = []
-        for r in results:
-            lines.append(
-                f"- username: {_yaml_scalar(r['username'])}\n"
-                f"  password: {_yaml_scalar(r['password'])}"
-            )
-        return "\n".join(lines)
-    lines = []
-    for r in results:
-        if fmt == "env":
-            lines.append(f"USERNAME={r['username']}")
-            lines.append(f"PASSWORD={r['password']}")
-        else:
-            lines.append(f"{r['username']}:{r['password']}")
-    return "\n".join(lines)
+    return _format_batch(
+        results, fmt,
+        yaml_item=lambda r: (
+            f"- username: {_yaml_scalar(r['username'])}\n"
+            f"  password: {_yaml_scalar(r['password'])}"
+        ),
+        env_item=lambda r: [
+            f"USERNAME={r['username']}",
+            f"PASSWORD={r['password']}",
+        ],
+        text_item=lambda r: f"{r['username']}:{r['password']}",
+    )
 
 
 def display_menu():
@@ -461,6 +462,79 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _handle_encode(args, parser, stdin_piped):
+    """Gère la commande encode."""
+    enc = args.encoding
+    if args.file:
+        results = batch_encode(args.file, enc)
+        content = format_batch_encode(results, args.format)
+        write_output(content, args.output)
+    elif stdin_piped and not args.password:
+        results = batch_encode("-", enc)
+        content = format_batch_encode(results, args.format)
+        write_output(content, args.output)
+    else:
+        password = args.password or getpass.getpass("Mot de passe: ")
+        if args.check_password:
+            warnings = check_password_strength(password)
+            if warnings:
+                for w in warnings:
+                    print(f"⚠ {w}", file=sys.stderr)
+        encoded = encode_credentials(args.username, password, enc)
+        content = format_encoded(encoded, args.format)
+        write_output(content, args.output)
+
+
+def _handle_decode(args, parser, stdin_piped):
+    """Gère la commande decode."""
+    enc = args.encoding
+    if args.file:
+        results = batch_decode(args.file, enc)
+        content = format_batch_decode(results, args.format)
+        write_output(content, args.output)
+    elif args.encoded:
+        username, password = decode_credentials(args.encoded, enc)
+        content = format_decoded(username, password, args.format)
+        write_output(content, args.output)
+    elif stdin_piped:
+        results = batch_decode("-", enc)
+        content = format_batch_decode(results, args.format)
+        write_output(content, args.output)
+    else:
+        parser.error("decode nécessite un token, --file, ou stdin")
+
+
+def _handle_keygen(args, parser, stdin_piped):
+    """Gère la commande keygen."""
+    key = generate_key()
+    write_output(key, args.output)
+
+
+def _handle_encrypt(args, parser, stdin_piped):
+    """Gère la commande encrypt."""
+    key = _resolve_key(args)
+    password = args.password or getpass.getpass("Mot de passe: ")
+    token = encrypt_credentials(args.username, password, key)
+    write_output(token, args.output)
+
+
+def _handle_decrypt(args, parser, stdin_piped):
+    """Gère la commande decrypt."""
+    key = _resolve_key(args)
+    username, password = decrypt_credentials(args.token, key)
+    content = format_decoded(username, password, args.format)
+    write_output(content, args.output)
+
+
+_COMMAND_HANDLERS = {
+    "encode": _handle_encode,
+    "decode": _handle_decode,
+    "keygen": _handle_keygen,
+    "encrypt": _handle_encrypt,
+    "decrypt": _handle_decrypt,
+}
+
+
 def main():
     """Point d'entrée principal."""
     parser = build_parser()
@@ -468,91 +542,17 @@ def main():
         argcomplete.autocomplete(parser)
     args = parser.parse_args()
 
-    stdin_piped = not sys.stdin.isatty()
-
-    if args.command == "encode":
-        enc = args.encoding
-        if args.file:
-            try:
-                results = batch_encode(args.file, enc)
-                content = format_batch_encode(results, args.format)
-                write_output(content, args.output)
-            except (ValueError, FileNotFoundError) as e:
-                print(f"Erreur: {e}", file=sys.stderr)
-                sys.exit(1)
-        elif stdin_piped and not args.password:
-            try:
-                results = batch_encode("-", enc)
-                content = format_batch_encode(results, args.format)
-                write_output(content, args.output)
-            except ValueError as e:
-                print(f"Erreur: {e}", file=sys.stderr)
-                sys.exit(1)
-        else:
-            password = args.password or getpass.getpass("Mot de passe: ")
-            if args.check_password:
-                warnings = check_password_strength(password)
-                if warnings:
-                    for w in warnings:
-                        print(f"⚠ {w}", file=sys.stderr)
-            encoded = encode_credentials(args.username, password, enc)
-            content = format_encoded(encoded, args.format)
-            write_output(content, args.output)
-    elif args.command == "decode":
-        enc = args.encoding
-        if args.file:
-            try:
-                results = batch_decode(args.file, enc)
-                content = format_batch_decode(results, args.format)
-                write_output(content, args.output)
-            except (ValueError, FileNotFoundError) as e:
-                print(f"Erreur: {e}", file=sys.stderr)
-                sys.exit(1)
-        elif args.encoded:
-            try:
-                username, password = decode_credentials(args.encoded, enc)
-                content = format_decoded(username, password, args.format)
-                write_output(content, args.output)
-            except ValueError as e:
-                print(f"Erreur: {e}", file=sys.stderr)
-                sys.exit(1)
-        elif stdin_piped:
-            try:
-                results = batch_decode("-", enc)
-                content = format_batch_decode(results, args.format)
-                write_output(content, args.output)
-            except ValueError as e:
-                print(f"Erreur: {e}", file=sys.stderr)
-                sys.exit(1)
-        else:
-            parser.error("decode nécessite un token, --file, ou stdin")
-    elif args.command == "keygen":
-        try:
-            key = generate_key()
-            write_output(key, args.output)
-        except RuntimeError as e:
-            print(f"Erreur: {e}", file=sys.stderr)
-            sys.exit(1)
-    elif args.command == "encrypt":
-        try:
-            key = _resolve_key(args)
-            password = args.password or getpass.getpass("Mot de passe: ")
-            token = encrypt_credentials(args.username, password, key)
-            write_output(token, args.output)
-        except (ValueError, RuntimeError, FileNotFoundError) as e:
-            print(f"Erreur: {e}", file=sys.stderr)
-            sys.exit(1)
-    elif args.command == "decrypt":
-        try:
-            key = _resolve_key(args)
-            username, password = decrypt_credentials(args.token, key)
-            content = format_decoded(username, password, args.format)
-            write_output(content, args.output)
-        except (ValueError, RuntimeError, FileNotFoundError) as e:
-            print(f"Erreur: {e}", file=sys.stderr)
-            sys.exit(1)
-    else:
+    handler = _COMMAND_HANDLERS.get(args.command)
+    if handler is None:
         interactive_loop()
+        return
+
+    stdin_piped = not sys.stdin.isatty()
+    try:
+        handler(args, parser, stdin_piped)
+    except (ValueError, RuntimeError, FileNotFoundError) as e:
+        print(f"Erreur: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
