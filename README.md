@@ -1,5 +1,9 @@
 # base64-credentials
 
+[![CI](https://github.com/valorisa/Base64-Credentials/actions/workflows/ci.yml/badge.svg)](https://github.com/valorisa/Base64-Credentials/actions/workflows/ci.yml)
+[![Python 3.6+](https://img.shields.io/badge/python-3.6%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Un gestionnaire de credentials simple et interactif utilisant l'encodage Base64.
 
 ## Table des matières
@@ -73,6 +77,7 @@ Ce projet est idéal pour :
 - ✅ **Aucune dépendance externe** : Utilise uniquement la bibliothèque
   standard Python
 - ✅ **Mode CLI** : Utilisation non-interactive pour les scripts et pipelines
+- ✅ **Support stdin** : Lecture depuis pipe (`echo "user:pass" | ... encode`)
 - ✅ **Mode batch** : Encodage/décodage en masse depuis un fichier
 - ✅ **Formats de sortie** : text, JSON, env
 - ✅ **Export fichier** : Option `-o` pour écrire le résultat dans un fichier
@@ -200,6 +205,23 @@ python3 credentials_manager.py decode -f tokens.txt
 
 python3 credentials_manager.py decode -f tokens.txt --format json
 # [{"username": "admin", "password": "secret123"}, ...]
+```
+
+Lecture depuis stdin (pipe) — détecté automatiquement :
+
+```bash
+echo "admin:secret" | python3 credentials_manager.py encode
+# YWRtaW46c2VjcmV0
+
+echo "YWRtaW46c2VjcmV0" | python3 credentials_manager.py decode
+# admin:secret
+
+# Chaînage complet :
+echo "admin:secret" | python3 credentials_manager.py encode | python3 credentials_manager.py decode
+# admin:secret
+
+# Batch via stdin :
+cat creds.txt | python3 credentials_manager.py encode --format json
 ```
 
 Utilisation dans un pipeline :

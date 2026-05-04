@@ -59,11 +59,19 @@ def write_output(content: str, output_path: str = None):
         print(content)
 
 
+def _open_input(input_path: str):
+    """Ouvre un fichier ou stdin si input_path vaut '-'."""
+    if input_path == "-":
+        return sys.stdin
+    return open(input_path, "r", encoding="utf-8")
+
+
 def batch_encode(input_path: str) -> List[Dict[str, str]]:
-    """Encode des credentials depuis un fichier (un username:password par ligne)."""
+    """Encode des credentials depuis un fichier ou stdin (un username:password par ligne)."""
     results = []
-    with open(input_path, "r", encoding="utf-8") as f:
-        for lineno, line in enumerate(f, 1):
+    source = _open_input(input_path)
+    try:
+        for lineno, line in enumerate(source, 1):
             line = line.strip()
             if not line or line.startswith("#"):
                 continue
@@ -74,14 +82,18 @@ def batch_encode(input_path: str) -> List[Dict[str, str]]:
             username, password = line.split(":", 1)
             encoded = encode_credentials(username, password)
             results.append({"username": username, "encoded": encoded})
+    finally:
+        if source is not sys.stdin:
+            source.close()
     return results
 
 
 def batch_decode(input_path: str) -> List[Dict[str, str]]:
-    """Décode des credentials depuis un fichier (un token base64 par ligne)."""
+    """Décode des credentials depuis un fichier ou stdin (un token base64 par ligne)."""
     results = []
-    with open(input_path, "r", encoding="utf-8") as f:
-        for lineno, line in enumerate(f, 1):
+    source = _open_input(input_path)
+    try:
+        for lineno, line in enumerate(source, 1):
             line = line.strip()
             if not line or line.startswith("#"):
                 continue
@@ -90,6 +102,9 @@ def batch_decode(input_path: str) -> List[Dict[str, str]]:
             except ValueError as e:
                 raise ValueError(f"Ligne {lineno}: {e}") from e
             results.append({"username": username, "password": password})
+    finally:
+        if source is not sys.stdin:
+            source.close()
     return results
 
 
@@ -226,6 +241,8 @@ def main():
     parser = build_parser()
     args = parser.parse_args()
 
+    stdin_piped = not sys.stdin.isatty()
+
     if args.command == "encode":
         if args.file:
             try:
@@ -233,6 +250,14 @@ def main():
                 content = format_batch_encode(results, args.format)
                 write_output(content, args.output)
             except (ValueError, FileNotFoundError) as e:
+                print(f"Erreur: {e}", file=sys.stderr)
+                sys.exit(1)
+        elif stdin_piped:
+            try:
+                results = batch_encode("-")
+                content = format_batch_encode(results, args.format)
+                write_output(content, args.output)
+            except ValueError as e:
                 print(f"Erreur: {e}", file=sys.stderr)
                 sys.exit(1)
         else:
@@ -257,8 +282,16 @@ def main():
             except ValueError as e:
                 print(f"Erreur: {e}", file=sys.stderr)
                 sys.exit(1)
+        elif stdin_piped:
+            try:
+                results = batch_decode("-")
+                content = format_batch_decode(results, args.format)
+                write_output(content, args.output)
+            except ValueError as e:
+                print(f"Erreur: {e}", file=sys.stderr)
+                sys.exit(1)
         else:
-            parser.error("decode nécessite un token base64 ou --file")
+            parser.error("decode nécessite un token base64, --file, ou stdin")
     else:
         interactive_loop()
 

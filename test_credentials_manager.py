@@ -361,3 +361,75 @@ class TestCLIBatch:
         result = self.run_cli("encode", "-f", "nonexistent.txt")
         assert result.returncode == 1
         assert "Erreur" in result.stderr
+
+
+# --- stdin ---
+
+
+class TestStdin:
+    def run_cli_stdin(self, stdin_data, *args):
+        return subprocess.run(
+            [sys.executable, "credentials_manager.py", *args],
+            input=stdin_data,
+            capture_output=True,
+            text=True,
+        )
+
+    def test_encode_stdin(self):
+        result = self.run_cli_stdin("admin:secret\n", "encode")
+        assert result.returncode == 0
+        assert result.stdout.strip() == base64.b64encode(b"admin:secret").decode()
+
+    def test_decode_stdin(self):
+        token = base64.b64encode(b"admin:secret").decode()
+        result = self.run_cli_stdin(f"{token}\n", "decode")
+        assert result.returncode == 0
+        assert "admin:secret" in result.stdout
+
+    def test_encode_stdin_multiple(self):
+        result = self.run_cli_stdin("admin:secret\nuser2:pass2\n", "encode")
+        assert result.returncode == 0
+        lines = result.stdout.strip().splitlines()
+        assert len(lines) == 2
+
+    def test_decode_stdin_multiple(self):
+        t1 = base64.b64encode(b"admin:secret").decode()
+        t2 = base64.b64encode(b"user2:pass2").decode()
+        result = self.run_cli_stdin(f"{t1}\n{t2}\n", "decode")
+        assert result.returncode == 0
+        assert "admin:secret" in result.stdout
+        assert "user2:pass2" in result.stdout
+
+    def test_encode_stdin_json(self):
+        result = self.run_cli_stdin("admin:secret\n", "encode", "--format", "json")
+        assert result.returncode == 0
+        data = json.loads(result.stdout)
+        assert isinstance(data, list)
+        assert data[0]["username"] == "admin"
+
+    def test_encode_stdin_pipe_roundtrip(self):
+        encode = subprocess.run(
+            [sys.executable, "credentials_manager.py", "encode"],
+            input="admin:secret\n",
+            capture_output=True,
+            text=True,
+        )
+        decode = subprocess.run(
+            [sys.executable, "credentials_manager.py", "decode"],
+            input=encode.stdout,
+            capture_output=True,
+            text=True,
+        )
+        assert decode.returncode == 0
+        assert "admin:secret" in decode.stdout
+
+    def test_encode_stdin_skips_comments(self):
+        result = self.run_cli_stdin("# comment\n\nadmin:secret\n", "encode")
+        assert result.returncode == 0
+        lines = result.stdout.strip().splitlines()
+        assert len(lines) == 1
+
+    def test_decode_stdin_invalid(self):
+        result = self.run_cli_stdin("not-valid!!!\n", "decode")
+        assert result.returncode == 1
+        assert "Erreur" in result.stderr
